@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>카페 POS 장부 v3.5</title>
+    <title>카페 POS 장부 v4.0</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
     <style>
         body { font-family: 'Malgun Gothic', sans-serif; background: #eef2f3; margin: 0; padding: 0; height: 100vh; display: flex; flex-direction: column; }
@@ -13,7 +13,6 @@
         .btn-reg { background: #333; color: white; padding: 0 20px; border: none; border-radius: 10px; font-size: 1.2rem; font-weight: bold; cursor: pointer; }
         #memberList { flex-grow: 1; overflow-y: auto; padding: 15px; }
         
-        /* 카드 스타일 - 삭제 버튼 배치를 위해 relative 추가 */
         .card { background: #fff; border-radius: 15px; padding: 20px; margin-bottom: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); position: relative; }
         .card-info { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 10px; padding-right: 30px; }
         .name-area { display: flex; flex-direction: column; }
@@ -21,7 +20,6 @@
         .phone-sub { font-size: 1rem; color: #888; }
         .balance { font-size: 2rem; font-weight: 800; color: #007bff; }
         
-        /* 회원 삭제 버튼(X) 스타일 */
         .btn-del { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #ddd; font-size: 1.2rem; cursor: pointer; padding: 5px; }
         .btn-del:hover { color: #e74c3c; }
 
@@ -34,6 +32,15 @@
         .direct { background: #f39c12; grid-column: span 3; height: 45px; }
         .log-btn { background: #3498db; grid-column: span 3; height: 45px; border-radius: 8px; border: none; color: white; font-weight: bold; cursor: pointer; }
 
+        /* [추가] 로그인 화면 스타일 */
+        #loginOverlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #333; z-index: 1000; display: flex; justify-content: center; align-items: center; flex-direction: column; color: white; }
+        .login-box { background: white; padding: 30px; border-radius: 20px; text-align: center; width: 80%; max-width: 320px; color: #333; }
+        .login-box h2 { margin-top: 0; font-size: 1.5rem; }
+        .login-box input { width: 100%; text-align: center; letter-spacing: 5px; font-size: 1.5rem; margin-bottom: 15px; box-sizing: border-box; }
+        
+        /* [추가] 메인 숨김용 */
+        #mainContainer { display: none; flex-direction: column; height: 100vh; }
+
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 100; justify-content: center; align-items: center; }
         .modal-content { background: white; padding: 25px; border-radius: 20px; width: 85%; max-width: 450px; text-align: center; }
         .log-list { max-height: 40vh; overflow-y: auto; text-align: left; border-top: 1px solid #eee; margin-top: 15px; }
@@ -43,18 +50,29 @@
 </head>
 <body>
 
-<div class="header">
-    <div class="input-row">
-        <input type="text" id="newName" placeholder="회원명(새로운 고객님 추가 할때!)">
-        <input type="text" id="newPhone" placeholder="번호(형식:01088646394)">
-        <button class="btn-reg" onclick="addMember()">등록</button>
-    </div>
-    <div class="input-row">
-        <input type="text" id="search" oninput="filter()" placeholder="🔍 이름 또는 번호 검색">
+<div id="loginOverlay">
+    <div class="login-box">
+        <h2>🔒 장부 접근 제한</h2>
+        <p>비밀번호를 입력하세요</p>
+        <input type="password" id="pwInput" maxlength="4" inputmode="numeric" placeholder="****">
+        <button class="btn-reg" style="width:100%; padding:15px;" onclick="checkLogin()">로그인</button>
     </div>
 </div>
 
-<div id="memberList"></div>
+<div id="mainContainer">
+    <div class="header">
+        <div class="input-row">
+            <input type="text" id="newName" placeholder="회원명(새로운 고객님 추가 할때!)">
+            <input type="text" id="newPhone" placeholder="번호(형식:01088646394)">
+            <button class="btn-reg" onclick="addMember()">등록</button>
+        </div>
+        <div class="input-row">
+            <input type="text" id="search" oninput="filter()" placeholder="🔍 이름 또는 번호 검색">
+        </div>
+    </div>
+
+    <div id="memberList"></div>
+</div>
 
 <div id="directModal" class="modal">
     <div class="modal-content">
@@ -86,6 +104,9 @@
 </div>
 
 <script>
+    // [설정] 원하는 비밀번호 4자리
+    const PASS = "9999";
+
     const SB_URL = 'https://kjoqxszmnwkmyreqysxf.supabase.co';
     const SB_KEY = 'sb_publishable_BJkRUoq6WkdevAlVjJlnLg_1jSGPRHC';
     const TABLE = 'cafe-pos'; 
@@ -94,6 +115,24 @@
     const db = createClient(SB_URL, SB_KEY);
 
     let activeId = null, activeBal = 0, activeName = '';
+
+    // [추가] 로그인 체크 함수
+    function checkLogin() {
+        const val = document.getElementById('pwInput').value;
+        if(val === PASS) {
+            document.getElementById('loginOverlay').style.display = 'none';
+            document.getElementById('mainContainer').style.display = 'flex';
+            load(); // 로그인 성공 시 데이터 로딩 시작
+        } else {
+            alert('비밀번호가 틀렸습니다.');
+            document.getElementById('pwInput').value = '';
+        }
+    }
+
+    // 엔터키 입력 지원
+    document.getElementById('pwInput').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') checkLogin();
+    });
 
     async function load() {
         const { data, error } = await db.from(TABLE).select('*').order('name', { ascending: true });
@@ -130,39 +169,21 @@
         });
     }
 
-    // [회원 삭제 함수]
     async function deleteMember(id, name) {
         if (!confirm(`'${name}' 회원을 정말로 삭제하시겠습니까?\n삭제된 데이터는 복구할 수 없습니다.`)) return;
-
         const { error } = await db.from(TABLE).delete().eq('id', id);
-
-        if (error) {
-            alert('삭제에 실패했습니다: ' + error.message);
-        } else {
-            await load(); // 목록 새로고침
-            filter();     // 현재 검색 필터 유지
-        }
+        if (error) { alert('삭제 실패'); } else { await load(); filter(); }
     }
 
     async function updateBal(id, cur, amt) {
         const now = new Date();
         const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${now.getMinutes()}`;
         const change = (amt > 0 ? '+' : '') + amt.toLocaleString();
-        
         const { data } = await db.from(TABLE).select('all_history').eq('id', id).single();
         const oldLog = data ? data.all_history || '' : '';
         const newLog = `${timeStr} | ${change} | 잔액: ${(cur + amt).toLocaleString()}\n` + oldLog;
-
-        const { error } = await db.from(TABLE)
-            .update({ balance: cur + amt, all_history: newLog.substring(0, 5000) })
-            .eq('id', id);
-
-        if (error) {
-            alert('업데이트 실패!');
-        } else {
-            await load(); 
-            filter();     
-        }
+        await db.from(TABLE).update({ balance: cur + amt, all_history: newLog.substring(0, 5000) }).eq('id', id);
+        await load(); filter();
     }
 
     function openNoteModal(id, currentNote) {
@@ -173,17 +194,9 @@
 
     async function saveNote() {
         const newNote = document.getElementById('noteInput').value;
-        const { error } = await db.from(TABLE)
-            .update({ note: newNote })
-            .eq('id', activeId);
-
-        if (error) {
-            alert('메모 저장 실패!');
-        } else {
-            closeModal('noteModal');
-            await load(); 
-            filter();     
-        }
+        await db.from(TABLE).update({ note: newNote }).eq('id', activeId);
+        closeModal('noteModal');
+        await load(); filter();
     }
 
     function openDirect(id, bal, name) {
@@ -227,7 +240,8 @@
         Array.from(cards).forEach(c => c.style.display = c.innerText.toLowerCase().includes(t) ? 'block' : 'none');
     }
 
-    window.onload = load;
+    // [중요] onload 시 load() 대신 checkLogin 대기 상태로 유지
+    // window.onload = load; <- 이 부분 삭제됨
 </script>
 </body>
 </html>
